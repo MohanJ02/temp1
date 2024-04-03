@@ -104,7 +104,7 @@ class GSTWebRTCApp:
                                candidate: self.__send_ice(webrtcbin, mlineindex, candidate))
         
     
-        self.webrtcbin.connect('pad-added', self.handle_webcam_stream)
+        self.webrtcbin.connect('pad-added', lambda webrtcbin, pad: self.handle_webcam_stream(webrtcbin, pad))
 
         # Add STUN server
         # TODO: figure out how to add more than 1 stun server.
@@ -305,7 +305,7 @@ class GSTWebRTCApp:
             candidate {string} -- ice candidate string
         """
 
-        logger.info("received ICE candidate: %d %s", mlineindex, candidate)
+        logger.debug("received ICE candidate: %d %s", mlineindex, candidate)
         loop = asyncio.new_event_loop()
         loop.run_until_complete(self.on_ice(mlineindex, candidate))
     
@@ -510,4 +510,9 @@ class GSTWebRTCApp:
             self.webrtcbin.unparent()
             self.webrtcbin = None
             logger.info("webrtcbin set to state NULL")
+        if self.fakesink:
+            self.fakesink.set_state(Gst.State.NULL)
+            self.fakesink.unparent()
+            self.fakesink = None
+            logger.info("fakesink set to state NULL")
         logger.info("pipeline stopped")

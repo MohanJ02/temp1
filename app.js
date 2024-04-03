@@ -77,12 +77,13 @@ function start() {
         // for debugging, force use of relay server.
         webrtc.forceTurn = false;
 
-        // if (config.iceServers.length > 1) {
-        //  console.log(config.iceServers[1].urls.join(", "));
-        // } else {
-        //     console.log("[app] no TURN servers found.");
-        // }
+        if (config.iceServers.length > 1) {
+         console.log(config.iceServers[1].urls.join(", "));
+        } else {
+            console.log("[app] no TURN servers found.");
+        }
         webrtc.rtcPeerConfig = config;
+        console.log("rtcConfig from server: ", config)
         webrtc.connect();
     })
     .catch((error) => {

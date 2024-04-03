@@ -243,45 +243,6 @@ class WebRTCDemo {
         this.signalling.sendICE(event.candidate);
     }
 
-    // /**
-    //  * Handles incoming SDP from signalling server.
-    //  * Sets the remote description on the peer connection,
-    //  * creates an answer with a local description and sends that to the peer.
-    //  *
-    //  * @param {RTCSessionDescription} sdp
-    //  */
-    // _onSDP(sdp) {
-    //     if (sdp.type != "offer") {
-    //         this._setError("received SDP was not type offer.");
-    //         return
-    //     }
-    //     console.log("Received remote SDP", sdp);
-    //     this.peerConnection.setRemoteDescription(sdp).then(() => {
-    //         this._setDebug("received SDP offer, creating answer");
-    //         this.peerConnection.createAnswer()
-    //             .then((local_sdp) => {
-    //                 // // Override SDP to enable stereo on WebRTC Opus with Chromium, must be munged before the Local Description
-    //                 // if (local_sdp.sdp.indexOf('multiopus') === -1) {
-    //                 //     if (!(/[^-]stereo=1/gm.test(local_sdp.sdp))) {
-    //                 //         console.log("Overriding WebRTC SDP to allow stereo audio");
-    //                 //         if (/[^-]stereo=0/gm.test(local_sdp.sdp)) {
-    //                 //             local_sdp.sdp = local_sdp.sdp.replace('stereo=0', 'stereo=1');
-    //                 //         } else {
-    //                 //             local_sdp.sdp = local_sdp.sdp.replace('useinbandfec=', 'stereo=1;useinbandfec=');
-    //                 //         }
-    //                 //     }
-    //                 // }
-    //                 console.log("Created local SDP", local_sdp);
-    //                 this.peerConnection.setLocalDescription(local_sdp).then(() => {
-    //                     this._setDebug("Sending SDP answer");
-    //                     this.signalling.sendSDP(this.peerConnection.localDescription);
-    //                 });
-    //             }).catch(() => {
-    //                 this._setError("Error creating local SDP");
-    //             });
-    //     })
-    // }
-
     /**
      * Handles incoming SDP from signalling server.
      * Sets the remote description on the peer connection,
@@ -340,17 +301,29 @@ class WebRTCDemo {
             case "connected":
                 this._setStatus("Connection complete");
                 this._connected = true;
-                this.playVideo();
+                // code part to check the icetransports of senders/receivers
+                var trport = this.peerConnection.getSenders();
+                var iceTransport = trport[0].transport.iceTransport
+                iceTransport.onselectedcandidatepairchange = (ev) => {
+                    let pair = iceTransport.getSelectedCandidatePair();
+                    console.log("Update candit pair: ", pair)
+                };
+                console.log("sender iceTransport: ", iceTransport)
+                console.log("selected candidate pair: ", trport[0].transport.iceTransport.getSelectedCandidatePair())
+                iceTransport.onstatechange = (ev) => {
+                    console.log("State changed to: ", iceTransport.state);
+                }
+                console.log("State of ice candidate: ", trport[0].transport.iceTransport.state)
                 break;
 
             case "disconnected":
                 this._setError("Peer connection disconnected");
-                this.element.load();
+                //this.element.load();
                 break;
 
             case "failed":
                 this._setError("Peer connection failed");
-                this.element.load();
+                //this.element.load();
                 break;
                 
             case "closed":
@@ -382,20 +355,6 @@ class WebRTCDemo {
                 break;
         }
     }
-
-
-    /**
-     * Sends message to peer data channel.
-     *
-     * @param {String} message
-     */
-    // sendDataChannelMessage(message) {
-    //     if (this._send_channel !== null && this._send_channel.readyState === 'open') {
-    //         this._send_channel.send(message);
-    //     } else {
-    //         this._setError("attempt to send data channel message before channel was open.");
-    //     }
-    // }
 
     /**
      * Starts playing the video stream.
