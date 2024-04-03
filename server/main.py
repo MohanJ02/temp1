@@ -213,7 +213,7 @@ def main():
         config_json = make_turn_rtc_config_json(args.turn_host, args.turn_port, args.turn_username, args.turn_password, turn_protocol, using_turn_tls)
         stun_servers, turn_servers, rtc_config = parse_rtc_config(config_json)
 
-    logger.info("initial server RTC config: {}".format(rtc_config))
+    logger.info("initial server RTC configggg: {}".format(rtc_config))
 
      # Create instance of app
     app = GSTWebRTCApp(stun_servers, turn_servers, args.encoder)
@@ -264,6 +264,9 @@ def main():
 
         while True:
             asyncio.ensure_future(app.handle_bus_calls(), loop=loop)
+
+            asyncio.ensure_future(app.check_property(), loop=loop)
+            
             loop.run_until_complete(signalling.connect())
             loop.run_until_complete(signalling.start())
             

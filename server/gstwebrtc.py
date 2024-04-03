@@ -60,6 +60,13 @@ class GSTWebRTCApp:
         self.webrtcbin = None
         self.encoder = encoder
 
+        self.peer_connection_state = None
+        self.ice_connection_state = None
+
+        self.fakesink_state = None
+        self.fakesink = None
+        self.rtpqueue_state = None
+        self.rtpqueue = None
 
         # WebRTC ICE and SDP events
         self.on_ice = lambda mlineindex, candidate: logger.warn(
@@ -287,44 +294,53 @@ class GSTWebRTCApp:
             caps = pad.get_current_caps()
             logger.info("Pad caps: " + str(caps))
 
-            # fakesink = Gst.ElementFactory.make("fakesink", "fakesinkbroo")
-            # self.pipeline.add(fakesink)
-            # if not Gst.Element.link(self.webrtcbin, fakesink):
-            #     raise GSTWebRTCAppError("Failed to raise webrtcbin -> fakesink")
-            rtpqueue = Gst.ElementFactory.make("queue", "rtpqueue")
-            rtph264depay = Gst.ElementFactory.make("rtph264depay", "rtph264depaybroo")
-            rtph264_caps = Gst.caps_from_string("application/x-rtp")
-            rtph264_caps.set_value("media", "video")
-            rtph264_caps.set_value("encoding-name", "H264")
-            rtph264_caps.set_value("payload", 123)
-            rtph264_caps.set_value("rtcp-fb-nack-pli", True)
-            rtph264_caps.set_value("rtcp-fb-ccm-fir", True)
-            rtph264_caps.set_value("rtcp-fb-x-gstreamer-fir-as-repair", True)
-            rtph264_caps.set_value("aggregate-mode", "zero-latency")
+            fakesink = Gst.ElementFactory.make("fakesink", "fakesinkbroo")
+            self.pipeline.add(fakesink)
+            if not Gst.Element.link(self.webrtcbin, fakesink):
+                raise GSTWebRTCAppError("Failed to raise webrtcbin -> fakesink")
 
-            rtph264capsfilter = Gst.ElementFactory.make("capsfilter")
-            rtph264capsfilter.set_property("caps", rtph264_caps)
+
+            # self.rtpqueue = Gst.ElementFactory.make("queue", "rtpqueue")
+            # rtph264depay = Gst.ElementFactory.make("rtph264depay", "rtph264depaybroo")
+            # rtph264_caps = Gst.caps_from_string("application/x-rtp")
+            # rtph264_caps.set_value("media", "video")
+            # rtph264_caps.set_value("encoding-name", "H264")
+            # rtph264_caps.set_value("payload", 123)
+            # rtph264_caps.set_value("rtcp-fb-nack-pli", True)
+            # rtph264_caps.set_value("rtcp-fb-ccm-fir", True)
+            # rtph264_caps.set_value("rtcp-fb-x-gstreamer-fir-as-repair", True)
+            # rtph264_caps.set_value("aggregate-mode", "zero-latency")
+
+            # self.fakesink = Gst.ElementFactory.make("fakesink", "fakesinkbroo")
+
+            # rtph264capsfilter = Gst.ElementFactory.make("capsfilter")
+            # rtph264capsfilter.set_property("caps", rtph264_caps)
             
 
-            v4l2sink = Gst.ElementFactory.make("v4l2sink", "v4l2sinkbroo")
-            v4l2sink.set_property("device", "/dev/video9")
+            # # v4l2sink = Gst.ElementFactory.make("v4l2sink", "v4l2sinkbroo")
+            # # v4l2sink.set_property("device", "/dev/video9")
 
-            self.pipeline.add(rtpqueue)
-            self.pipeline.add(rtph264capsfilter)
-            self.pipeline.add(rtph264depay)
-            self.pipeline.add(v4l2sink)
+            # self.pipeline.add(self.rtpqueue)
+            # self.pipeline.add(rtph264capsfilter)
+            # self.pipeline.add(rtph264depay)
+            # self.pipeline.add(self.fakesink)
+            
+            # # self.pipeline.add(v4l2sink)
 
-            if not Gst.Element.link(self.webrtcbin, rtpqueue):
-                raise GSTWebRTCAppError("Failed to link webrtcbin -> rtpqueue")
+            # if not Gst.Element.link(self.webrtcbin, self.rtpqueue):
+            #     raise GSTWebRTCAppError("Failed to link webrtcbin -> rtpqueue")
             
-            if not Gst.Element.link(rtpqueue, rtph264capsfilter):
-                raise GSTWebRTCAppError("Failed to link rtpqueue -> rtph264capsfilter")
+            # if not Gst.Element.link(self.rtpqueue, rtph264capsfilter):
+            #     raise GSTWebRTCAppError("Failed to link rtpqueue -> rtph264capsfilter")
             
-            if not Gst.Element.link(rtph264capsfilter, rtph264depay):
-                raise GSTWebRTCAppError("Failed to link rtph264capsfilter -> rtph264depay")
+            # if not Gst.Element.link(rtph264capsfilter, rtph264depay):
+            #     raise GSTWebRTCAppError("Failed to link rtph264capsfilter -> rtph264depay")
             
-            if not Gst.Element.link(rtph264depay, v4l2sink):
-                raise GSTWebRTCAppError("Failed to link rtph265depay -> v4l2sink")
+            # if not Gst.Element.link(rtph264depay, self.fakesink):
+            #     raise GSTWebRTCAppError("Failed to raise rtph264depay -> fakesink")
+            
+            # if not Gst.Element.link(rtph264depay, v4l2sink):
+            #     raise GSTWebRTCAppError("Failed to link rtph265depay -> v4l2sink")
 
 
     def start_pipeline(self):
@@ -392,6 +408,41 @@ class GSTWebRTCApp:
                         running = False
             await asyncio.sleep(0.1)
 
+    async def check_property(self):
+        while True:
+            if self.pipeline is not None:
+                if self.webrtcbin is not None:
+
+                    curr_ice_state = self.webrtcbin.get_property("ice-connection-state")
+                    if curr_ice_state.value_name != self.ice_connection_state:
+                        logger.info("Ice connection state: " + str(curr_ice_state.value_name))
+                        self.ice_connection_state = curr_ice_state.value_name
+
+                    curr_state = self.webrtcbin.get_property("connection-state")
+                    if curr_state.value_name != self.peer_connection_state:
+                        logger.info("Peer connection state: " + str(curr_state.value_name))
+                        self.peer_connection_state = curr_state.value_name
+                    
+                    if self.fakesink is not None:
+                        state_change_return, fakesink_curr_state, pending_state = self.fakesink.get_state(Gst.CLOCK_TIME_NONE)
+                        if self.fakesink_state != fakesink_curr_state:
+                            logger.info("Current state:" + str(fakesink_curr_state.value_nick))
+                            logger.info("state change return: " + str(state_change_return.value_nick))
+                            logger.info("pending state: " + str(pending_state.value_nick))
+
+                            self.fakesink_state = fakesink_curr_state
+                        
+                    # if self.rtpqueue is not None:
+                    #     state_change_return, rtp_curr_state, pending_state = self.rtpqueue.get_state(Gst.CLOCK_TIME_NONE)
+                    #     if  self.rtpqueue_state != rtp_curr_state:
+                    #         logger.info("RTP Current state:" + str(rtp_curr_state.value_nick))
+                    #         logger.info("state change return: " + str(state_change_return.value_nick))
+                    #         logger.info("pending state: " + str(pending_state.value_nick))
+
+                    #         self.rtpqueue_state = rtp_curr_state
+
+            await asyncio.sleep(0.1)
+
     def stop_pipeline(self):
         logger.info("stopping pipeline")
         if self.pipeline:
@@ -405,4 +456,8 @@ class GSTWebRTCApp:
             self.webrtcbin.unparent()
             self.webrtcbin = None
             logger.info("webrtcbin set to state NULL")
+        if self.fakesink:
+            self.fakesink.set_state(Gst.State.NULL)
+            self.fakesink.unparent()
+            self.fakesink = None
         logger.info("pipeline stopped")

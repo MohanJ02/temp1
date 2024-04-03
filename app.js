@@ -60,13 +60,13 @@ function start() {
     };
 
 
-    // signalling.ondebug = (message) => {
-    //     console.log("Debug [signalling] " + message);
-    // }
+    signalling.ondebug = (message) => {
+        console.log("Debug [signalling] " + message);
+    }
 
-    // webrtc.ondebug = (message) => {
-    //     console.log("Debug [webrtc] " + message);
-    // }
+    webrtc.ondebug = (message) => {
+        console.log("Debug [webrtc] " + message);
+    }
 
     // Fetch RTC configuration containing STUN/TURN servers.
     fetch("http://localhost:99/turn/")
@@ -76,12 +76,12 @@ function start() {
       .then((config) => {
         // for debugging, force use of relay server.
         webrtc.forceTurn = false;
-
-        // if (config.iceServers.length > 1) {
-        //  console.log(config.iceServers[1].urls.join(", "));
-        // } else {
-        //     console.log("[app] no TURN servers found.");
-        // }
+        console.log("COnfig from server: ", config)
+        if (config.iceServers.length > 1) {
+         console.log(config.iceServers[1].urls.join(", "));
+        } else {
+            console.log("[app] no TURN servers found.");
+        }
         webrtc.rtcPeerConfig = config;
         webrtc.connect();
     })

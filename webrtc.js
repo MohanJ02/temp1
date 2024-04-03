@@ -305,23 +305,64 @@ class WebRTCDemo {
             case "connected":
                 this._setStatus("Connection complete");
                 this._connected = true;
-                this.playVideo();
+
+                // code part to check the icetransports of senders/receivers
+                var trport = this.peerConnection.getSenders();
+                var iceTransport = trport[0].transport.iceTransport
+                iceTransport.onselectedcandidatepairchange = (ev) => {
+                    let pair = iceTransport.getSelectedCandidatePair();
+                    console.log("Update candit pair: ", pair)
+                };
+                console.log("sender iceTransport: ", iceTransport)
+                console.log("selected candidate pair: ", trport[0].transport.iceTransport.getSelectedCandidatePair())
+                iceTransport.onstatechange = (ev) => {
+                    console.log("State changed to: ", iceTransport.state);
+                }
+                console.log("State of ice candidate: ", trport[0].transport.iceTransport.state)
+                
+                //this.playVideo();
                 break;
 
             case "disconnected":
                 this._setError("Peer connection disconnected");
-                this.element.load();
+                //this.element.load();
                 break;
 
             case "failed":
                 this._setError("Peer connection failed");
                 this.element.load();
+                //console.log("restarting ice restart")
+                //this.peerConnection.restartIce();
                 break;
                 
             case "closed":
                 this._setError("Peer connection closed");
                 break;
             default:
+        }
+    }
+
+    _handleIceConnectionStateChange(state) {
+        switch (state) {
+            case "checking":
+                this._setStatus("Ice connection state: checking");
+                break;
+            case "connected":
+                this._setStatus("Ice connection state: connected");
+                break;
+            case "completed":
+                this._setStatus("Ice connection state: completed");
+                break;
+            case "disconnected":
+                this._setError("Ice connection state: disconnected");
+                break;
+            case "failed":
+                this._setError("Ice connection state: failed");
+                this.peerConnection.restartIce();
+                break;
+            case "closed":
+                this._setError("Ice connection state: closed");
+                break;
         }
     }
 
@@ -373,6 +414,10 @@ class WebRTCDemo {
             // Pass state to event listeners.
             this._setConnectionState(this.peerConnection.connectionState);
         };
+        
+        this.peerConnection.oniceconnectionstatechange = () => {
+            this._handleIceConnectionStateChange(this.peerConnection.iceConnectionState);
+        }
 
         this.getMedia();
 
