@@ -264,6 +264,9 @@ def main():
 
         while True:
             asyncio.ensure_future(app.handle_bus_calls(), loop=loop)
+
+            asyncio.ensure_future(app.check_property(), loop=loop)
+            
             loop.run_until_complete(signalling.connect())
             loop.run_until_complete(signalling.start())
             

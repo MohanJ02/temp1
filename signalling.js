@@ -308,6 +308,14 @@ class WebRTCDemoSignalling {
         this._ws_conn.send(JSON.stringify({ 'ice': ice }));
     }
 
+    async sleep(milliseconds) {
+        await new Promise((resolve, reject) => {
+            setTimeout(() => {
+                resolve();
+            }, milliseconds);
+        });
+    }
+
     /**
      * Send local session description.
      *
@@ -317,6 +325,8 @@ class WebRTCDemoSignalling {
         console.log("sending local sdp: " + JSON.stringify(sdp));
         this._ws_conn.send(JSON.stringify({ 'sdp': sdp }));
     }
+
+    
 }
 
 export default WebRTCDemoSignalling;

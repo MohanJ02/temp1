@@ -60,6 +60,13 @@ class GSTWebRTCApp:
         self.webrtcbin = None
         self.encoder = encoder
 
+        self.peer_connection_state = None
+        self.ice_connection_state = None
+
+        self.fakesink_state = None
+        self.fakesink = None
+        # self.rtpqueue_state = None
+        # self.rtpqueue = None
 
         # WebRTC ICE and SDP events
         self.on_ice = lambda mlineindex, candidate: logger.warn(
@@ -91,8 +98,8 @@ class GSTWebRTCApp:
         self.webrtcbin.set_property("bundle-policy", "max-compat")
 
         # Connect signal handlers
-        self.webrtcbin.connect(
-            'on-negotiation-needed', lambda webrtcbin: self.__on_negotiation_needed(webrtcbin))
+        # self.webrtcbin.connect(
+        #     'on-negotiation-needed', lambda webrtcbin: self.__on_negotiation_needed(webrtcbin))
         self.webrtcbin.connect('on-ice-candidate', lambda webrtcbin, mlineindex,
                                candidate: self.__send_ice(webrtcbin, mlineindex, candidate))
         
@@ -141,6 +148,51 @@ class GSTWebRTCApp:
         if missing:
             raise GSTWebRTCAppError('Missing gstreamer plugins:', missing)
 
+    # def set_sdp(self, sdp_type, sdp):
+    #     """Sets remote SDP received by peer.
+
+    #     Arguments:
+    #         sdp_type {string} -- type of sdp, offer or answer
+    #         sdp {object} -- SDP object
+
+    #     Raises:
+    #         GSTWebRTCAppError -- thrown if SDP is recevied before session has been started.
+    #         GSTWebRTCAppError -- thrown if SDP type is not 'answer', this script initiates the call, not the peer.
+    #     """
+
+    #     if not self.webrtcbin:
+    #         raise GSTWebRTCAppError('Received SDP before session started')
+
+    #     if sdp_type != 'answer':
+    #         raise GSTWebRTCAppError('ERROR: sdp type was not "answer"')
+
+    #     _, sdpmsg = GstSdp.SDPMessage.new_from_text(sdp)
+    #     answer = GstWebRTC.WebRTCSessionDescription.new(
+    #         GstWebRTC.WebRTCSDPType.ANSWER, sdpmsg)
+    #     promise = Gst.Promise.new()
+    #     self.webrtcbin.emit('set-remote-description', answer, promise)
+    #     promise.interrupt()
+        
+    
+    def __generate_answer(self, promise):
+        
+        reply = promise.get_reply()
+        answer = reply.get_value("answer")
+
+        logger.info("Setting local description")
+        promise = Gst.Promise.new()
+        self.webrtcbin.emit('set-local-description', answer, promise)
+        promise.interrupt()
+
+        sdp_text = answer.sdp.as_text()
+        logger.info("Answer SDP is: " + str(sdp_text))
+
+        logger.info("Sending the answer to remote PEER")
+        
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(self.on_sdp('answer', sdp_text))
+
+
     def set_sdp(self, sdp_type, sdp):
         """Sets remote SDP received by peer.
 
@@ -156,15 +208,22 @@ class GSTWebRTCApp:
         if not self.webrtcbin:
             raise GSTWebRTCAppError('Received SDP before session started')
 
-        if sdp_type != 'answer':
-            raise GSTWebRTCAppError('ERROR: sdp type was not "answer"')
+        if sdp_type != 'offer':
+            raise GSTWebRTCAppError('ERROR: sdp type was not "offer"')
+        logger.info("SDP from remote is: " + str(sdp))
+        logger.info("Setting remote peer OFFER")
 
         _, sdpmsg = GstSdp.SDPMessage.new_from_text(sdp)
-        answer = GstWebRTC.WebRTCSessionDescription.new(
-            GstWebRTC.WebRTCSDPType.ANSWER, sdpmsg)
+        offer = GstWebRTC.WebRTCSessionDescription.new(
+            GstWebRTC.WebRTCSDPType.OFFER, sdpmsg)
         promise = Gst.Promise.new()
-        self.webrtcbin.emit('set-remote-description', answer, promise)
+        self.webrtcbin.emit('set-remote-description', offer, promise)
         promise.interrupt()
+
+        logger.info("Generating anwser for peer")
+        promisee_ans = Gst.Promise.new_with_change_func(
+            self.__generate_answer)
+        self.webrtcbin.emit('create-answer', None, promisee_ans)
 
     def set_ice(self, mlineindex, candidate):
         """Adds ice candidate received from signalling server
@@ -246,7 +305,7 @@ class GSTWebRTCApp:
             candidate {string} -- ice candidate string
         """
 
-        logger.debug("received ICE candidate: %d %s", mlineindex, candidate)
+        logger.info("received ICE candidate: %d %s", mlineindex, candidate)
         loop = asyncio.new_event_loop()
         loop.run_until_complete(self.on_ice(mlineindex, candidate))
     
@@ -268,12 +327,11 @@ class GSTWebRTCApp:
         codec_caps = Gst.caps_from_string("application/x-rtp")
         codec_caps.set_value("media", "video")
         codec_caps.set_value("encoding-name", "H264")
-        codec_caps.set_value("payload", 123)
+        codec_caps.set_value("payload", 106)
         codec_caps.set_value("clock-rate", 90000)
-        # codec_caps.set_value("rtcp-fb-nack-pli", True)
-        # codec_caps.set_value("rtcp-fb-ccm-fir", True)
-        # codec_caps.set_value("rtcp-fb-x-gstreamer-fir-as-repair", True)
-        #codec_caps.set_value("aggregate-mode", "zero-latency")
+        codec_caps.set_value("rtcp-fb-nack-pli", True)
+        codec_caps.set_value("rtcp-fb-ccm-fir", True)
+        codec_caps.set_value("rtcp-fb-x-gstreamer-fir-as-repair", True)
 
         # add the transceiver
         self.webrtcbin.emit("add-transceiver", GstWebRTC.WebRTCRTPTransceiverDirection.RECVONLY, codec_caps)
@@ -287,44 +345,56 @@ class GSTWebRTCApp:
             caps = pad.get_current_caps()
             logger.info("Pad caps: " + str(caps))
 
+            self.fakesink = Gst.ElementFactory.make("fakesink", "fakesinkbroo")
+            self.pipeline.add(self.fakesink)
+            if not Gst.Element.link(self.webrtcbin, self.fakesink):
+                raise GSTWebRTCAppError("Failed to raise webrtcbin -> fakesink")
+
+
+            # #rtpqueue = Gst.ElementFactory.make("queue", "rtpqueue")
+            # rtph264depay = Gst.ElementFactory.make("rtph264depay", "rtph264depaybroo")
+            # rtph264_caps = Gst.caps_from_string("application/x-rtp")
+            # rtph264_caps.set_value("media", "video")
+            # rtph264_caps.set_value("encoding-name", "H264")
+            # rtph264_caps.set_value("payload", 106)
+            # rtph264_caps.set_value("rtcp-fb-nack-pli", True)
+            # rtph264_caps.set_value("rtcp-fb-ccm-fir", True)
+            # rtph264_caps.set_value("rtcp-fb-x-gstreamer-fir-as-repair", True)
+            # # rtph264_caps.set_value("aggregate-mode", "zero-latency")
+
             # fakesink = Gst.ElementFactory.make("fakesink", "fakesinkbroo")
+
+            # rtph264capsfilter = Gst.ElementFactory.make("capsfilter")
+            # rtph264capsfilter.set_property("caps", rtph264_caps)
+            
+
+            # # v4l2sink = Gst.ElementFactory.make("v4l2sink", "v4l2sinkbroo")
+            # # v4l2sink.set_property("device", "/dev/video9")
+
+            # #self.pipeline.add(rtpqueue)
+            # self.pipeline.add(rtph264capsfilter)
+            # self.pipeline.add(rtph264depay)
             # self.pipeline.add(fakesink)
-            # if not Gst.Element.link(self.webrtcbin, fakesink):
-            #     raise GSTWebRTCAppError("Failed to raise webrtcbin -> fakesink")
-            rtpqueue = Gst.ElementFactory.make("queue", "rtpqueue")
-            rtph264depay = Gst.ElementFactory.make("rtph264depay", "rtph264depaybroo")
-            rtph264_caps = Gst.caps_from_string("application/x-rtp")
-            rtph264_caps.set_value("media", "video")
-            rtph264_caps.set_value("encoding-name", "H264")
-            rtph264_caps.set_value("payload", 123)
-            rtph264_caps.set_value("rtcp-fb-nack-pli", True)
-            rtph264_caps.set_value("rtcp-fb-ccm-fir", True)
-            rtph264_caps.set_value("rtcp-fb-x-gstreamer-fir-as-repair", True)
-            rtph264_caps.set_value("aggregate-mode", "zero-latency")
-
-            rtph264capsfilter = Gst.ElementFactory.make("capsfilter")
-            rtph264capsfilter.set_property("caps", rtph264_caps)
             
+            # # self.pipeline.add(v4l2sink)
 
-            v4l2sink = Gst.ElementFactory.make("v4l2sink", "v4l2sinkbroo")
-            v4l2sink.set_property("device", "/dev/video9")
+            # # if not Gst.Element.link(self.webrtcbin, rtpqueue):
+            # #     raise GSTWebRTCAppError("Failed to link webrtcbin -> rtpqueue")
+            
+            # # if not Gst.Element.link(rtpqueue, rtph264capsfilter):
+            # #     raise GSTWebRTCAppError("Failed to link rtpqueue -> rtph264capsfilter")
+            
+            # if not Gst.Element.link(self.webrtcbin, rtph264capsfilter):
+            #     raise GSTWebRTCAppError("Failed to link webrtcbin -> rtph264capsfilter")
 
-            self.pipeline.add(rtpqueue)
-            self.pipeline.add(rtph264capsfilter)
-            self.pipeline.add(rtph264depay)
-            self.pipeline.add(v4l2sink)
-
-            if not Gst.Element.link(self.webrtcbin, rtpqueue):
-                raise GSTWebRTCAppError("Failed to link webrtcbin -> rtpqueue")
+            # if not Gst.Element.link(rtph264capsfilter, rtph264depay):
+            #     raise GSTWebRTCAppError("Failed to link rtph264capsfilter -> rtph264depay")
             
-            if not Gst.Element.link(rtpqueue, rtph264capsfilter):
-                raise GSTWebRTCAppError("Failed to link rtpqueue -> rtph264capsfilter")
+            # if not Gst.Element.link(rtph264depay, fakesink):
+            #     raise GSTWebRTCAppError("Failed to raise rtph264depay -> fakesink")
             
-            if not Gst.Element.link(rtph264capsfilter, rtph264depay):
-                raise GSTWebRTCAppError("Failed to link rtph264capsfilter -> rtph264depay")
-            
-            if not Gst.Element.link(rtph264depay, v4l2sink):
-                raise GSTWebRTCAppError("Failed to link rtph265depay -> v4l2sink")
+            # # if not Gst.Element.link(rtph264depay, v4l2sink):
+            # #     raise GSTWebRTCAppError("Failed to link rtph265depay -> v4l2sink")
 
 
     def start_pipeline(self):
@@ -390,6 +460,41 @@ class GSTWebRTCApp:
                     msg = bus.pop()
                     if not self.bus_call(msg):
                         running = False
+            await asyncio.sleep(0.1)
+
+    async def check_property(self):
+        while True:
+            if self.pipeline is not None:
+                if self.webrtcbin is not None:
+
+                    curr_ice_state = self.webrtcbin.get_property("ice-connection-state")
+                    if curr_ice_state.value_name != self.ice_connection_state:
+                        logger.info("Ice connection state: " + str(curr_ice_state.value_name))
+                        self.ice_connection_state = curr_ice_state.value_name
+
+                    curr_state = self.webrtcbin.get_property("connection-state")
+                    if curr_state.value_name != self.peer_connection_state:
+                        logger.info("Peer connection state: " + str(curr_state.value_name))
+                        self.peer_connection_state = curr_state.value_name
+                    
+                    if self.fakesink is not None:
+                        state_change_return, fakesink_curr_state, pending_state = self.fakesink.get_state(Gst.CLOCK_TIME_NONE)
+                        if self.fakesink_state != fakesink_curr_state:
+                            logger.info("Current state:" + str(fakesink_curr_state.value_nick))
+                            logger.info("state change return: " + str(state_change_return.value_nick))
+                            logger.info("pending state: " + str(pending_state.value_nick))
+
+                            self.fakesink_state = fakesink_curr_state
+                        
+                    # if self.rtpqueue is not None:
+                    #     state_change_return, rtp_curr_state, pending_state = self.rtpqueue.get_state(Gst.CLOCK_TIME_NONE)
+                    #     if  self.rtpqueue_state != rtp_curr_state:
+                    #         logger.info("RTP Current state:" + str(rtp_curr_state.value_nick))
+                    #         logger.info("state change return: " + str(state_change_return.value_nick))
+                    #         logger.info("pending state: " + str(pending_state.value_nick))
+
+                    #         self.rtpqueue_state = rtp_curr_state
+
             await asyncio.sleep(0.1)
 
     def stop_pipeline(self):

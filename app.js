@@ -26,7 +26,7 @@ function start() {
     var protocol = location.protocol == "http:" ? "ws://" : "wss://";
     var signalling = new WebRTCDemoSignalling(
         new URL(
-            protocol + "localhost:99" + "/signalling/"
+            protocol + "localhost:100" + "/signalling/"
         ),
         1
     );
@@ -60,16 +60,16 @@ function start() {
     };
 
 
-    // signalling.ondebug = (message) => {
-    //     console.log("Debug [signalling] " + message);
-    // }
+    signalling.ondebug = (message) => {
+        console.log("Debug [signalling] " + message);
+    }
 
-    // webrtc.ondebug = (message) => {
-    //     console.log("Debug [webrtc] " + message);
-    // }
+    webrtc.ondebug = (message) => {
+        console.log("Debug [webrtc] " + message);
+    }
 
     // Fetch RTC configuration containing STUN/TURN servers.
-    fetch("http://localhost:99/turn/")
+    fetch("http://localhost:100/turn/")
       .then(function (response) {
         return response.json();
       })

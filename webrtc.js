@@ -243,6 +243,45 @@ class WebRTCDemo {
         this.signalling.sendICE(event.candidate);
     }
 
+    // /**
+    //  * Handles incoming SDP from signalling server.
+    //  * Sets the remote description on the peer connection,
+    //  * creates an answer with a local description and sends that to the peer.
+    //  *
+    //  * @param {RTCSessionDescription} sdp
+    //  */
+    // _onSDP(sdp) {
+    //     if (sdp.type != "offer") {
+    //         this._setError("received SDP was not type offer.");
+    //         return
+    //     }
+    //     console.log("Received remote SDP", sdp);
+    //     this.peerConnection.setRemoteDescription(sdp).then(() => {
+    //         this._setDebug("received SDP offer, creating answer");
+    //         this.peerConnection.createAnswer()
+    //             .then((local_sdp) => {
+    //                 // // Override SDP to enable stereo on WebRTC Opus with Chromium, must be munged before the Local Description
+    //                 // if (local_sdp.sdp.indexOf('multiopus') === -1) {
+    //                 //     if (!(/[^-]stereo=1/gm.test(local_sdp.sdp))) {
+    //                 //         console.log("Overriding WebRTC SDP to allow stereo audio");
+    //                 //         if (/[^-]stereo=0/gm.test(local_sdp.sdp)) {
+    //                 //             local_sdp.sdp = local_sdp.sdp.replace('stereo=0', 'stereo=1');
+    //                 //         } else {
+    //                 //             local_sdp.sdp = local_sdp.sdp.replace('useinbandfec=', 'stereo=1;useinbandfec=');
+    //                 //         }
+    //                 //     }
+    //                 // }
+    //                 console.log("Created local SDP", local_sdp);
+    //                 this.peerConnection.setLocalDescription(local_sdp).then(() => {
+    //                     this._setDebug("Sending SDP answer");
+    //                     this.signalling.sendSDP(this.peerConnection.localDescription);
+    //                 });
+    //             }).catch(() => {
+    //                 this._setError("Error creating local SDP");
+    //             });
+    //     })
+    // }
+
     /**
      * Handles incoming SDP from signalling server.
      * Sets the remote description on the peer connection,
@@ -251,34 +290,30 @@ class WebRTCDemo {
      * @param {RTCSessionDescription} sdp
      */
     _onSDP(sdp) {
-        if (sdp.type != "offer") {
-            this._setError("received SDP was not type offer.");
-            return
-        }
-        console.log("Received remote SDP", sdp);
+        console.log("Setting remote SDP")
         this.peerConnection.setRemoteDescription(sdp).then(() => {
-            this._setDebug("received SDP offer, creating answer");
-            this.peerConnection.createAnswer()
-                .then((local_sdp) => {
-                    // // Override SDP to enable stereo on WebRTC Opus with Chromium, must be munged before the Local Description
-                    // if (local_sdp.sdp.indexOf('multiopus') === -1) {
-                    //     if (!(/[^-]stereo=1/gm.test(local_sdp.sdp))) {
-                    //         console.log("Overriding WebRTC SDP to allow stereo audio");
-                    //         if (/[^-]stereo=0/gm.test(local_sdp.sdp)) {
-                    //             local_sdp.sdp = local_sdp.sdp.replace('stereo=0', 'stereo=1');
-                    //         } else {
-                    //             local_sdp.sdp = local_sdp.sdp.replace('useinbandfec=', 'stereo=1;useinbandfec=');
-                    //         }
-                    //     }
-                    // }
-                    console.log("Created local SDP", local_sdp);
-                    this.peerConnection.setLocalDescription(local_sdp).then(() => {
-                        this._setDebug("Sending SDP answer");
-                        this.signalling.sendSDP(this.peerConnection.localDescription);
-                    });
-                }).catch(() => {
-                    this._setError("Error creating local SDP");
-                });
+            this._setDebug("Remote SDP answer set");
+            // this.peerConnection.createAnswer()
+            //     .then((local_sdp) => {
+            //         // // Override SDP to enable stereo on WebRTC Opus with Chromium, must be munged before the Local Description
+            //         // if (local_sdp.sdp.indexOf('multiopus') === -1) {
+            //         //     if (!(/[^-]stereo=1/gm.test(local_sdp.sdp))) {
+            //         //         console.log("Overriding WebRTC SDP to allow stereo audio");
+            //         //         if (/[^-]stereo=0/gm.test(local_sdp.sdp)) {
+            //         //             local_sdp.sdp = local_sdp.sdp.replace('stereo=0', 'stereo=1');
+            //         //         } else {
+            //         //             local_sdp.sdp = local_sdp.sdp.replace('useinbandfec=', 'stereo=1;useinbandfec=');
+            //         //         }
+            //         //     }
+            //         // }
+            //         console.log("Created local SDP", local_sdp);
+            //         this.peerConnection.setLocalDescription(local_sdp).then(() => {
+            //             this._setDebug("Sending SDP answer");
+            //             this.signalling.sendSDP(this.peerConnection.localDescription);
+            //         });
+            //     }).catch(() => {
+            //         this._setError("Error creating local SDP");
+            //     });
         })
     }
 
@@ -325,6 +360,30 @@ class WebRTCDemo {
         }
     }
 
+    _handleIceConnectionStateChange(state) {
+        switch (state) {
+            case "checking":
+                this._setStatus("Ice connection state: checking");
+                break;
+            case "connected":
+                this._setStatus("Ice connection state: connected");
+                break;
+            case "completed":
+                this._setStatus("Ice connection state: completed");
+                break;
+            case "disconnected":
+                this._setError("Ice connection state: disconnected");
+                break;
+            case "failed":
+                this._setError("Ice connection state: failed");
+                break;
+            case "closed":
+                this._setError("Ice connection state: closed");
+                break;
+        }
+    }
+
+
     /**
      * Sends message to peer data channel.
      *
@@ -358,14 +417,31 @@ class WebRTCDemo {
     }
     // [END playVideo]
 
+    on_negotiation_needed() {
+        console.log("Generating offer: on-negotiation-needed");
+        this.peerConnection.createOffer()
+            .then(async (local_sdp) => {
+                await this.peerConnection.setLocalDescription(local_sdp);
+                this._setDebug("Sending SDP offer");
+                this.signalling.sendSDP(this.peerConnection.localDescription);
+            })
+            .catch((err) => {
+                this._setError("Error creating local SDP off: ", err);
+                console.log(err)
+            })
+    }
+
+
     /**
      * Initiate connection to signalling server.
      */
     connect() {
+        this.getMedia();
+
         // Create the peer connection object and bind callbacks.
         this.peerConnection = new RTCPeerConnection(this.rtcPeerConfig);
         this.peerConnection.onicecandidate = this._onPeerICE.bind(this);
-
+        this.peerConnection.onnegotiationneeded = this.on_negotiation_needed.bind(this)
         this.peerConnection.onconnectionstatechange = () => {
             // Local event handling.
             this._handleConnectionStateChange(this.peerConnection.connectionState);
@@ -373,8 +449,10 @@ class WebRTCDemo {
             // Pass state to event listeners.
             this._setConnectionState(this.peerConnection.connectionState);
         };
-
-        this.getMedia();
+        
+        this.peerConnection.oniceconnectionstatechange = () => {
+            this._handleIceConnectionStateChange(this.peerConnection.iceConnectionState);
+        }
 
         if (this.forceTurn) {
             this._setStatus("forcing use of TURN server");
@@ -395,11 +473,38 @@ class WebRTCDemo {
             mediaStream.getTracks()
               .forEach(track => {
                 console.log("Track: ", track)
-               this.peerConnection.addTrack(track, mediaStream)
+                this.peerConnection.addTrack(track, mediaStream)
             })
+
 
             this.localStream = mediaStream;
             this.element.srcObject = mediaStream;
+
+            // // Add a transceiver for the video track
+            // const transceiver = this.peerConnection.addTransceiver('video');
+
+            // // Get the RTP sender for the video track
+            // const sender = transceiver.sender;
+
+            // // Set the desired codec parameters
+            // const parameters = sender.getParameters();
+            // parameters.codecs = [{
+            //     mimeType: 'application/x-rtp',
+            //     payloadType: 123,
+            //     clockRate: 90000,
+            //     sdpFmtpLine: 'a=rtpmap:123 H264/90000\r\na=fmtp:123 packetization-mode=0'
+            // }];
+            // sender.setParameters(parameters);
+            
+            //   this.peerConnection.createOffer()
+            //     .then(async (local_sdp) => {
+            //         await this.peerConnection.setLocalDescription(local_sdp);
+            //         this._setDebug("Sending SDP offer");
+            //         this.signalling.sendSDP(this.peerConnection.localDescription);
+            //     })
+            //     .catch((err) => {
+            //         console.log("err cretin off:" , err)
+            //     })
         })
         .catch((err) => {
             console.error(`${err.name}: ${err.message}`);
